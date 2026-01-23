@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Image Picker</title>
+</head>
+<body>
+
+  <input type="file" id="imageInput" accept="image/*" multiple>
+  <div id="preview"></div>
+
+  <script>
+    const images = []; // in-memory storage
+
+    const input = document.getElementById("imageInput");
+    const preview = document.getElementById("preview");
+
+    input.addEventListener("change", () => {
+      preview.innerHTML = "";
+      images.length = 0;
+
+      for (const file of input.files) {
+        images.push(file);
+
+        const img = document.createElement("img");
+        img.src = URL.createObjectURL(file);
+        img.style.width = "150px";
+
+        preview.appendChild(img);
+      }
+    });
+  </script>
+
+</body>
+</html>
