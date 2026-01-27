@@ -1,35 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Image Picker</title>
-</head>
 <body>
+  <input id="title" placeholder="Title"> <br>
+  <textarea id="desc" placeholder="Description (1 to 3 sentences)"></textarea> <br>
 
-  <input type="file" id="imageInput" accept="image/*" multiple>
+  <input type="file" id="img" accept="image/*" multiple>
+  <button id="add">Add landmark</button>
+
   <div id="preview"></div>
+  <hr>
+  <div id="list"></div>
 
   <script>
-    const images = []; // in-memory storage
+    const images = []
+    const landmarks = []
 
-    const input = document.getElementById("imageInput");
-    const preview = document.getElementById("preview");
+    const titleEl = document.getElementById("title")
+    const descEl = document.getElementById("desc")
+    const imgEl = document.getElementById("img")
+    const previewEl = document.getElementById("preview")
+    const listEl = document.getElementById("list")
 
-    input.addEventListener("change", () => {
-      preview.innerHTML = "";
-      images.length = 0;
+    function handleImageChange() {
+      previewEl.innerHTML = ""
+      images.length = 0
 
-      for (const file of input.files) {
-        images.push(file);
+      for (const file of imgEl.files) {
+        images.push(file)
 
-        const img = document.createElement("img");
-        img.src = URL.createObjectURL(file);
-        img.style.width = "150px";
-
-        preview.appendChild(img);
+        const pic = document.createElement("img")
+        pic.src = URL.createObjectURL(file)
+        pic.width = 150
+        previewEl.appendChild(pic)
       }
-    });
-  </script>
+    }
 
+    imgEl.addEventListener("change", handleImageChange)
+
+    function countSentences(text) {
+      const parts = text.split(/[.!?]+/)
+      let count = 0
+
+      for (let i = 0; i < parts.length; i++) {
+        const sentence = parts[i].trim()
+        if (sentence !== "") {
+          count++
+        }
+      }
+
+      return count
+    }
+
+    function render() {
+      listEl.innerHTML = ""
+
+      for (const lm of landmarks) {
+        const box = document.createElement("div")
+        box.innerHTML = "<h3>" + lm.title + "</h3><p>" + lm.desc + "</p>"
+
+        const pic = document.createElement("img")
+        pic.src = URL.createObjectURL(lm.file)
+        pic.width = 150
+
+        box.appendChild(pic)
+        listEl.appendChild(box)
+      }
+    }
+
+    function handleAddClick() {
+      const title = titleEl.value.trim()
+      const desc = descEl.value.trim()
+
+      if (!title || !desc || images.length === 0) {
+        alert("Need title, description, and at least 1 image")
+        return
+      }
+
+      const sCount = countSentences(desc)
+      if (sCount < 1 || sCount > 3) {
+        alert("Description must be 1 to 3 sentences")
+        return
+      }
+
+      const file = images[0]
+      landmarks.push({ title, desc, file })
+
+      titleEl.value = ""
+      descEl.value = ""
+      imgEl.value = ""
+      previewEl.innerHTML = ""
+      images.length = 0
+
+      render()
+    }
+
+    document.getElementById("add").addEventListener("click", handleAddClick)
+  </script>
 </body>
 </html>
