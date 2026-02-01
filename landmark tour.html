@@ -2,169 +2,283 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Landmarks Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>City Walking Tour</title>
+
   <style>
-    #map { width: 100%; height: 60vh; }
-    img { margin: 4px; }
+    body { margin: 0; font-family: Arial, sans-serif; padding: 10px; box-sizing: border-box; }
+    #app { display: flex; gap: 10px; }
+    #map { flex: 2; min-height: 60vh; border: 1px solid #ccc; border-radius: 8px; }
+    #panel { flex: 1; border: 1px solid #ccc; border-radius: 8px; padding: 10px; box-sizing: border-box; }
+
+    input, textarea, button { width: 100%; box-sizing: border-box; font-size: 16px; }
+    input, textarea { padding: 10px; margin: 6px 0; }
+    textarea { min-height: 70px; resize: vertical; }
+    button { padding: 12px; margin: 6px 0; }
+
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+
+    #preview img, .thumb {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 6px 0;
+      border-radius: 6px;
+    }
+
+    .item {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 8px;
+      margin: 8px 0;
+    }
+
+    .item button {
+      width: auto;
+      margin: 4px 4px 0 0;
+    }
+
+    #msg { margin: 6px 0; }
+
+    @media (max-width: 900px) {
+      #app { flex-direction: column; }
+      #map { min-height: 50vh; }
+    }
   </style>
 </head>
+
 <body>
-  <div id="map"></div>
+  <h1>City Walking Tour Map</h1>
+  <p>
+    This application is designed for tourists exploring the city on foot.
+    Users can add landmarks, view them on a map, and click markers to see
+    descriptions and photos of each location.
+  </p>
 
-  <hr>
+  <div id="app">
+    <div id="map"></div>
 
-  <input id="title" placeholder="Title"> <br>
-  <textarea id="desc" placeholder="Description (1 to 3 sentences)"></textarea> <br>
+    <div id="panel">
+      <div id="msg"></div>
 
-  <input type="file" id="img" accept="image/*" multiple> <br>
+      <input id="title" placeholder="Landmark title">
+      <textarea id="desc" placeholder="Short description (1 to 3 sentences)"></textarea>
+      <input id="img" type="file" accept="image/*" multiple>
 
-  <button id="geo">Use my location</button> <br>
+      <div class="row">
+        <button id="geo" type="button">Use my location</button>
+        <button id="cancel" type="button" style="display:none;">Cancel edit</button>
+      </div>
 
-  <input id="lat" placeholder="Latitude"> <br>
-  <input id="lng" placeholder="Longitude"> <br>
+      <div class="row">
+        <input id="lat" placeholder="Latitude">
+        <input id="lng" placeholder="Longitude">
+      </div>
 
-  <button id="add">Add landmark</button>
+      <button id="save" type="button">Add landmark</button>
+      <div id="preview"></div>
 
-  <div id="preview"></div>
+      <hr>
+      <div id="list"></div>
+    </div>
+  </div>
 
   <script>
-    const images = []
     const landmarks = []
+    const markers = {}
+    let images = []
+    let map, info, editingId = null
 
     const titleEl = document.getElementById("title")
     const descEl = document.getElementById("desc")
     const imgEl = document.getElementById("img")
-    const previewEl = document.getElementById("preview")
     const latEl = document.getElementById("lat")
     const lngEl = document.getElementById("lng")
+    const previewEl = document.getElementById("preview")
+    const listEl = document.getElementById("list")
+    const msgEl = document.getElementById("msg")
+    const cancelBtn = document.getElementById("cancel")
+    const saveBtn = document.getElementById("save")
 
-    let map = null
-    let infoWindow = null
+    function msg(t) { msgEl.textContent = t }
+
+    function countSentences(text) {
+      const parts = text.split(/[.!?]+/)
+      let c = 0
+      for (let i = 0; i < parts.length; i++) if (parts[i].trim() !== "") c++
+      return c
+    }
 
     function handleImageChange() {
+      images = []
       previewEl.innerHTML = ""
-      images.length = 0
-
-      for (const file of imgEl.files) {
-        images.push(file)
-
-        const pic = document.createElement("img")
-        pic.src = URL.createObjectURL(file)
-        pic.width = 120
-        previewEl.appendChild(pic)
+      for (const f of imgEl.files) {
+        images.push(f)
+        const im = document.createElement("img")
+        im.src = URL.createObjectURL(f)
+        previewEl.appendChild(im)
       }
     }
 
     imgEl.addEventListener("change", handleImageChange)
 
-    function countSentences(text) {
-      const parts = text.split(/[.!?]+/)
-      let count = 0
-
-      for (let i = 0; i < parts.length; i++) {
-        const sentence = parts[i].trim()
-        if (sentence !== "") count++
-      }
-      return count
-    }
-
-    function handleGeoClick() {
-      if (!navigator.geolocation) {
-        alert("Geolocation not supported")
-        return
-      }
-
-      navigator.geolocation.getCurrentPosition(function (pos) {
-        latEl.value = pos.coords.latitude
-        lngEl.value = pos.coords.longitude
+    document.getElementById("geo").onclick = function () {
+      if (!navigator.geolocation) { msg("No geolocation support"); return }
+      navigator.geolocation.getCurrentPosition(function (p) {
+        latEl.value = p.coords.latitude
+        lngEl.value = p.coords.longitude
+        msg("Location filled")
       }, function () {
-        alert("Could not get location")
+        msg("Geolocation blocked")
       })
     }
 
-    document.getElementById("geo").addEventListener("click", handleGeoClick)
-
-    function makeInfoHtml(lm) {
-      let html = ""
-      html += "<h3>" + lm.title + "</h3>"
-      html += "<p>" + lm.desc + "</p>"
-      html += "<div>Lat: " + lm.lat + " Lng: " + lm.lng + "</div>"
-
-      for (let i = 0; i < lm.files.length; i++) {
-        const url = URL.createObjectURL(lm.files[i])
-        html += "<img src='" + url + "' width='140'>"
+    function infoHtml(lm) {
+      let h = "<h3>" + lm.title + "</h3><p>" + lm.desc + "</p>"
+      for (const f of lm.files) {
+        h += "<img class='thumb' src='" + URL.createObjectURL(f) + "'>"
       }
-
-      return html
+      return h
     }
 
-    function addMarkerForLandmark(lm) {
-      const marker = new google.maps.Marker({
-        map: map,
-        position: { lat: lm.lat, lng: lm.lng },
-        title: lm.title
-      })
-
-      marker.addListener("click", function () {
-        infoWindow.setContent(makeInfoHtml(lm))
-        infoWindow.open(map, marker)
-      })
+    function upsertMarker(lm) {
+      let m = markers[lm.id]
+      if (!m) {
+        m = new google.maps.Marker({ map, position: { lat: lm.lat, lng: lm.lng }, title: lm.title })
+        m.addListener("click", function () {
+          info.setContent(infoHtml(lm))
+          info.open(map, m)
+        })
+        markers[lm.id] = m
+      }
+      m.setPosition({ lat: lm.lat, lng: lm.lng })
+      m.setMap(lm.visible ? map : null)
     }
 
-    function handleAddClick() {
+    function renderList() {
+      listEl.innerHTML = ""
+      for (const lm of landmarks) {
+        const d = document.createElement("div")
+        d.className = "item"
+        d.innerHTML = "<b>" + lm.title + "</b><div>Lat: " + lm.lat + " Lng: " + lm.lng + "</div>"
+
+        const hideBtn = document.createElement("button")
+        hideBtn.textContent = lm.visible ? "Hide" : "Show"
+        hideBtn.onclick = function () {
+          lm.visible = !lm.visible
+          upsertMarker(lm)
+          renderList()
+        }
+
+        const editBtn = document.createElement("button")
+        editBtn.textContent = "Edit"
+        editBtn.onclick = function () { startEdit(lm.id) }
+
+        const delBtn = document.createElement("button")
+        delBtn.textContent = "Delete"
+        delBtn.onclick = function () { del(lm.id) }
+
+        d.appendChild(hideBtn)
+        d.appendChild(editBtn)
+        d.appendChild(delBtn)
+        listEl.appendChild(d)
+      }
+    }
+
+    function startEdit(id) {
+      const lm = landmarks.find(x => x.id === id)
+      if (!lm) return
+      editingId = id
+      titleEl.value = lm.title
+      descEl.value = lm.desc
+      latEl.value = lm.lat
+      lngEl.value = lm.lng
+      previewEl.innerHTML = ""
+      for (const f of lm.files) {
+        const im = document.createElement("img")
+        im.src = URL.createObjectURL(f)
+        previewEl.appendChild(im)
+      }
+      cancelBtn.style.display = "block"
+      saveBtn.textContent = "Save"
+      msg("Editing landmark")
+    }
+
+    cancelBtn.onclick = function () {
+      editingId = null
+      cancelBtn.style.display = "none"
+      saveBtn.textContent = "Add landmark"
+      previewEl.innerHTML = ""
+      imgEl.value = ""
+      images = []
+      msg("")
+    }
+
+    function del(id) {
+      const i = landmarks.findIndex(x => x.id === id)
+      if (i === -1) return
+      if (markers[id]) { markers[id].setMap(null); delete markers[id] }
+      landmarks.splice(i, 1)
+      renderList()
+      msg("Landmark deleted")
+    }
+
+    saveBtn.onclick = function () {
       const title = titleEl.value.trim()
       const desc = descEl.value.trim()
       const lat = Number(latEl.value)
       const lng = Number(lngEl.value)
 
-      if (!title || !desc || images.length === 0) {
-        alert("Need title, description, and at least 1 image")
-        return
+      if (!title || !desc) { msg("Title and description required"); return }
+      if (countSentences(desc) < 1 || countSentences(desc) > 3) { msg("Description must be 1 to 3 sentences"); return }
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) { msg("Valid coordinates required"); return }
+
+      let files = images.slice()
+      if (editingId) {
+        const lm = landmarks.find(x => x.id === editingId)
+        if (files.length === 0) files = lm.files
+        lm.title = title
+        lm.desc = desc
+        lm.lat = lat
+        lm.lng = lng
+        lm.files = files
+        upsertMarker(lm)
+        editingId = null
+      } else {
+        if (files.length === 0) { msg("At least one image required"); return }
+        const lm = { id: String(Date.now()), title, desc, lat, lng, files, visible: true }
+        landmarks.push(lm)
+        upsertMarker(lm)
       }
 
-      const sCount = countSentences(desc)
-      if (sCount < 1 || sCount > 3) {
-        alert("Description must be 1 to 3 sentences")
-        return
-      }
-
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-        alert("Need valid latitude and longitude")
-        return
-      }
-
-      const lm = {
-        title: title,
-        desc: desc,
-        files: images.slice(),
-        lat: lat,
-        lng: lng
-      }
-
-      landmarks.push(lm)
-      addMarkerForLandmark(lm)
-
-      titleEl.value = ""
-      descEl.value = ""
-      imgEl.value = ""
+      renderList()
       previewEl.innerHTML = ""
-      images.length = 0
+      imgEl.value = ""
+      images = []
+      saveBtn.textContent = "Add landmark"
+      cancelBtn.style.display = "none"
+      msg("Saved")
     }
-
-    document.getElementById("add").addEventListener("click", handleAddClick)
 
     function initMap() {
       map = new google.maps.Map(document.getElementById("map"), {
         center: { lat: 43.6532, lng: -79.3832 },
-        zoom: 10
+        zoom: 11
       })
-      infoWindow = new google.maps.InfoWindow()
+      info = new google.maps.InfoWindow()
+
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(function (p) {
+          map.setCenter({ lat: p.coords.latitude, lng: p.coords.longitude })
+          map.setZoom(13)
+        })
+      }
     }
 
     window.initMap = initMap
   </script>
 
-  <!-- Replace YOUR_API_KEY with your real key -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=[mykey]&callback=initMap" async defer></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap" async defer></script>
 </body>
 </html>
